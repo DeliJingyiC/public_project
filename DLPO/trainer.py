@@ -12,12 +12,9 @@ from pytorch_lightning.utilities import rank_zero_only
 from copy import deepcopy
 from utils.tblogger import TensorBoardLoggerExpanded
 from pathlib import Path
-# from MOSNet.model import CNN_BLSTM
 from NISQA.nisqa.NISQA_model import nisqaModel
 
 from UTMOS.lightning_module import BaselineLightningModule
-import logging
-import time
 from buffer_jc import RolloutBuffer
 from datamodule import DataModule
 import torchaudio
@@ -91,28 +88,6 @@ class EMACallback(Callback):
 
 
 cwd = Path.cwd()
-
-
-def load_mosnet(init_mostnet, model_dir: Path):
-    if (model_dir.exists()):
-        model_list = list(model_dir.iterdir())
-    else:
-        model_list = []
-
-    if len(model_list) > 0:
-
-        last_model = model_list[-1]
-
-        last_epoch = int(last_model.stem)
-
-        print(f"load model from epoch {last_epoch} from {last_model}")
-
-        # TODO: load model parameters instead of model object
-        init_mostnet.load_state_dict(torch.load(last_model))
-        last_epoch = int(last_model.stem)
-    else:
-        last_epoch = 0
-    return last_epoch
 
 
 def train(args):

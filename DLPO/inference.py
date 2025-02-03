@@ -1,4 +1,4 @@
-from lightning_model_jc import Wavegrad2
+from lightning_model import Wavegrad2
 from omegaconf import OmegaConf as OC
 import argparse
 import datetime
@@ -100,32 +100,12 @@ if __name__ == '__main__':
 
     model.load_state_dict(ckpt['state_dict'] if not (
         'EMA' in args.checkpoint) else ckpt)
-
-    save_dir = Path(
-        "/users/PAS2062/delijingyic/project/MOSNet/output/CNN-BLSTM_mse_16/modelPara"
-    )
+    model = model.cuda()
 
     sample_dir = Path(
         "/users/PAS2062/delijingyic/project/wavegrad2/dataset/LJSpeech")
     duration_dir = sample_dir / "preprocessed" / "duration"
     textgrid_dir = sample_dir / "preprocessed" / "TextGrid"
-
-    model = model.cuda()
-    if (save_dir.exists()):
-        model_list = list(save_dir.iterdir())
-    else:
-        model_list = []
-
-    if len(model_list) > 0:
-
-        last_model = model_list[-1]
-        print(f"loading MOSNet from {last_model}")
-
-        last_epoch = int(last_model.stem)
-
-        print(f"load model from epoch {last_epoch} from {last_model}")
-        mosNet = CNN_BLSTM()
-        mosNet.load_state_dict(torch.load(last_model))
 
     utmos=lightning_module.BaselineLightningModule.load_from_checkpoint(
             "/users/PAS2062/delijingyic/project/wavegrad2/UTMOS/epoch=3-step=7459.ckpt",map_location='cpu').eval()
