@@ -32,25 +32,16 @@ class RolloutBuffer(Dataset):
     def __init__(
         self,
         path: Path,
-        # mosnet: CNN_BLSTM,
         buffer_size: int = 10,
     ):
         self.loaded = []
         self.buffer = []
-        # self.buffer_org = []
-        # self.loaded_org = []
 
         self.folder = path
-        # self.org_folder = Path(
-        #     '/users/PAS2062/delijingyic/project/wavegrad2/buffer_org')
         self.buffer_size = buffer_size
-        # self.mosnet = mosnet
-        # self.files = []
-        # print("dingwei")
 
     def __len__(self):
         length = sum([len(i["frame"]) for i in self.buffer])
-        # print(f"buffer_jc.create_dataloader.len(self) {length}")
         return length
 
     def __getitem__(self, idex: int):
@@ -58,55 +49,18 @@ class RolloutBuffer(Dataset):
         for i in range(len(self.buffer)):
             if idex < len(self.buffer[i]['frame']):
                 if idex == len(self.buffer[i]['frame']) - 1:
-                    # idex = random.randint(0, len(self.buffer[i]['frame']) - 2)
                     idex = random.randint(len(self.buffer[i]['frame']) - 12, len(self.buffer[i]['frame']) - 2)
                     
-                    
-                ###### reward weighted regression
-                # item_f = self.buffer[i]['frame'][len(self.buffer[i]['frame']) -
-                #                                  2]
-                # idex=len(self.buffer[i]['frame']) -2
-                ###### reward weighted regression
-                ###### original next line
                 item_f = self.buffer[i]['frame'][idex]
-                # print(self.buffer[i]['log_prob'].shape,
-                #       'item_lob_prob = self.buffer[i]')
-                # item_lob_prob = self.buffer[i]['log_prob'][idex]
-                
-                # item_lob_probinf = self.buffer[i]['log_probinf'][idex]
-
                 item_model_mean = self.buffer[i]['model_mean'][idex]
                 item_model_std = self.buffer[i]['model_std'][idex]
                 item_model_stdinf = self.buffer[i]['model_stdinf'][idex]
-
-
                 step_list=[x+1 for x in range(len(self.buffer[i]['frame']))][-5:]
-                # item_lob_prob_org=self.buffer[i]['log_prob_org'][idex]
-                # item_model_mean_org = self.buffer[i]['model_mean_org'][idex]
-                # item_model_std_org = self.buffer[i]['model_std_org'][idex]
-                # # print('i[item_f]', item_f)
-                # print('item_lob_prob', len(item_lob_prob[0]))
-                # print('i[item_model_mean]', item_model_mean[0].shape)
-                # print('item_lob_prob_org', len(item_lob_prob_org[0]))
-                # print('i[item_model_mean]', item_model_mean_org[0].shape)
-                # print([self.buffer[i]['rawtext'], self.buffer_org[i]['rawtext']] )
-                # print('item_model_std', item_model_std)
-
-                # print('i[mosscore_update]', i['mosscore_update'])
-                # print('i[hidrep]', i['hidrep'])
-                # print('i[text]', i['text'])
-                # print('i[duration_target]', i['duration_target'])
-                # print('i[speakers]', i['speakers'])
-                # print('i[input_lengths]', i['input_lengths'])
-                # print('i[output_lengths]', i['output_lengths'])
-                # print('i[text_org]', i['text_org'])
-
-                # assert False, i.keys()
+                
                 return [
                     item_f,
                     self.buffer[i]['log_prob'],
                     idex + 1,
-                    # len(self.buffer[i]['frame']) - 1,
                     self.buffer[i]['hidrep'],
                     self.buffer[i]['mosscore'],
                     self.buffer[i]["text"],
@@ -120,9 +74,6 @@ class RolloutBuffer(Dataset):
                     item_model_std,
                     self.buffer[i]['rawtext'],
                     self.buffer[i]['goal_audio'],
-                    # item_lob_prob_org,
-                    # item_model_mean_org,
-                    # item_model_std_org,
                     step_list,
                     self.buffer[i]['log_probinf'],
                     item_model_stdinf,
@@ -145,16 +96,9 @@ class RolloutBuffer(Dataset):
 
 
     def save(self, **data):
-        # current_rank = 0
-        # print('savedata', data)
         file_path = self.fetch_name(**data)
         np.savez(
             file_path,
-            # hidrep=data['hidrep'],
-            # mosscore=data['mosscore'],
-            # frame=data['frame'],
-            # log_prob=data['log_prob'],
-            # text=data['text'],
             **data,
         )
         file_path.with_suffix(".npz").rename(file_path.with_suffix(".dt"))
@@ -166,9 +110,7 @@ class RolloutBuffer(Dataset):
     def load_data(self):
         for x in sorted(self.folder.glob('*.dt')):
             if x in self.loaded:
-                # print('inifloaded', x)
                 continue
-            # print('outofloaded', x)
             kk = np.load(x)
 
             self.buffer.append({**kk})
@@ -209,7 +151,6 @@ class RolloutBuffer(Dataset):
         assert len(frame) == len(
             log_prob), f'frame {len(frame)}, log_prob {len(log_prob)}'
         print('mosscore_update buffer', mosscore_update)
-        # self.buffer.clear()
         print(
             f"Adding {mosscore_update} to {[x['mosscore_update'] for x in self.buffer]}"
         )
@@ -243,26 +184,16 @@ class RolloutBuffer(Dataset):
 
         def collate_fn(batch: List[Tuple[np.ndarray, float, int, np.ndarray,
                                          float]]):
+            
             rawtext = [x[14] for x in batch]
-            # print('batchsize', len(batch))
-
             model_std = torch.tensor(np.array([x[13] for x in batch]))
             model_std_inf = torch.tensor(np.array([x[18] for x in batch]))
-
-
             head = batch[0]
-
             logprob = torch.tensor(np.array([x[1] for x in batch]))
-
             logprob_inf = torch.tensor(np.array([x[17] for x in batch]))
-
-
             tidx = torch.tensor([x[2] for x in batch])
             step_list = torch.tensor(np.array([x[16] for x in batch]))
-
-
             model_mean_lis = [x[12] for x in batch]
-
             model_mean = torch.tensor(
                 pad_lastdimension(
                     model_mean_lis,
@@ -270,8 +201,6 @@ class RolloutBuffer(Dataset):
                 ),
                 dtype=torch.float32,
             )
-
-
             goal_audio_list = [x[15] for x in batch]
             goal_audio = pad_lastdimension(
                 goal_audio_list,
@@ -281,23 +210,19 @@ class RolloutBuffer(Dataset):
 
             ##pad frame
             frame_list = [x[0] for x in batch]
-            # frame = np.zeros(
-            #     (len(batch), max([x.shape[-1] for x in frame_list])))
-            # for i, f in enumerate(frame_list):
-            #     frame[i, :f.shape[-1]] = f
             paded_frame = pad_lastdimension(
                 frame_list,
                 y=torch.zeros((len(frame_list), )),
             )
-
             frame = torch.tensor(paded_frame, dtype=torch.float32)
+            
             text_list = [x[5] for x in batch]
             paded_text = pad_lastdimension(
                 text_list,
                 y=torch.zeros((len(text_list), )),
             )
-
             texts = torch.tensor(paded_text, dtype=torch.long)
+            
             hp_list = [x[3] for x in batch]
             paded_hp = pad_lastdimension(
                 hp_list,
@@ -309,6 +234,7 @@ class RolloutBuffer(Dataset):
             mos = torch.tensor(np.array([x[4] for x in batch]))
             mosscore_update = torch.tensor(np.array([x[6] for x in batch
                                                      ])).squeeze()
+            
             duration_target = torch.tensor(
                 pad_lastdimension(
                     [x[7] for x in batch],
@@ -357,14 +283,11 @@ class RolloutBuffer(Dataset):
         print('random_index', random_index)
         samp = [self[i] for i in random_index]
 
-##########same trajectory
+##########same trajectory#############
         return DataLoader(
-            # [self[i] for i in random_index],
             samp,
-            # self,
             batch_size=batch_size,
             shuffle=True,
-            # shuffle=False,
             num_workers=num_worker,
             drop_last=True,
             collate_fn=collate_fn)

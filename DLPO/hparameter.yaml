@@ -8,13 +8,8 @@ train:
     rate: 0.05
     start: 25000
     end: 100000
-  num_workers: 2 #num_workers == gpus
-  # gpus: 0 #ddp
-  # gpus: 4 #ddp
+  num_workers: 2 
   nodes: 2
-  #sh10_sbatch_pitzer.sh SBATCH --ntasks-per-node=2 match with gpus: 2
-  #SBATCH --nodes=1 match with nodes:1
-  #SBATCH --gres=gpu:v100-32g:2 match with gpus: 2
 
 
   loss_rate:
@@ -30,14 +25,12 @@ data:
   lang: 'eng'
   text_cleaners: ['english_cleaners'] # korean_cleaners, english_cleaners, chinese_cleaners
   speakers: ['LJSpeech']
-  # train_dir: '/users/PAS2062/delijingyic/project/wavegrad2/dataset/LJSpeech/LJSpeech-1.1' 
   train_dir: '/users/PAS2062/delijingyic/project/wavegrad2/dataset/LJSpeech/preprocessed'
   train_meta: 'train_all.txt'  # relative path of metadata file from train_dir
   val_dir: '/users/PAS2062/delijingyic/project/wavegrad2/dataset/LJSpeech/preprocessed'
   val_meta: 'val.txt'  # relative path of metadata file from val_dir'
   lexicon_path: 'lexicon/librispeech-lexicon.txt'
   mosscore_dir: '/users/PAS2062/delijingyic/project/wavegrad2/mos_results/10_07_12_epoch=27MOS120_WG21059_base.json'
-  # mosscore_dir: '/users/PAS2062/delijingyic/project/wavegrad2/mos_results/10_07_12_epoch=27MOS120_WG21059_base_standarized.json'
   
 audio:
   n_mel_channels: 80

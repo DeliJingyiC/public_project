@@ -225,10 +225,8 @@ def create_dataloader(hparams, cv):
         duration_padded = torch.zeros((len(batch), max_input_len[0]),
                                       dtype=torch.long)
         raw_text = [[] for _ in range(len(batch))]
-        # print('wav.size(0)', wav.size(0))
 
         for idx, key in enumerate(ids_sorted_decreasing):
-            # print('output_lengths[idx]', output_lengths[idx])
             text = batch[key][0]
             text_padded[idx, :text.size(0)] = text
             wav = batch[key][1]
@@ -241,8 +239,8 @@ def create_dataloader(hparams, cv):
 
         return text_padded, wav_padded, duration_padded, speakers, \
             input_lengths, output_lengths, max_input_len, raw_text
-##########same trajectory
-
+            
+##########same trajectory#################
     if cv == 0:
         trainset = TextAudioDataset(hparams,
                                     hparams.data.train_dir,
@@ -261,8 +259,7 @@ def create_dataloader(hparams, cv):
             pin_memory=True,
             drop_last=False,
         )
-##########same trajectory
-        
+##########same trajectory##################
     elif cv == -1:
         trainset = TextAudioDatasetWithRawText(hparams,
                                                hparams.data.train_dir,
