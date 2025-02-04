@@ -138,74 +138,57 @@ if __name__ == '__main__':
     except Exception:
         mos_dic = {}
 
+    #get speaker id
+    speaker_dict = {spk: idx for idx, spk in enumerate(hparams.data.speakers)}
+    spk_id = torch.LongTensor([speaker_dict[args.speaker]]).cuda()
+
+    #get path for output file
+    result_dir = cwd / "mos_results" / f"{args.filename}_{file_name}"
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    mos_score_total = 0  # Track MOS score sum
+    mos_count = 0  # Track valid samples
+
     for i, row in tqdm(data['text'].items()):
-
-        if data.loc[i]['filename'] in mos_dic.keys():
+        filename = data.loc[i]['filename']
+        
+        # Skip if already processed
+        if filename in mos_dic:
             continue
-        else:
-            if hparams.data.lang == 'eng':
-                text = preprocess_eng(hparams, row)
-            speaker_dict = {
-                spk: idx
-                for idx, spk in enumerate(hparams.data.speakers)
-            }
-            spk_id = [speaker_dict[args.speaker]]
-            spk_id = torch.LongTensor(spk_id)
 
-            text = text.cuda()
-            spk_id = spk_id.cuda()
+        # Process text only if needed
+        text = preprocess_eng(hparams, row) if hparams.data.lang == 'eng' else row
+        text = text.cuda()
 
-            (cwd / "mos_results" / f"{args.filename}_{file_name}").mkdir(
-                parents=True, exist_ok=True)
+        # Run model inference
+        wav_recon, align, *_, timestep = model.inference(text, spk_id, pace=args.pace)
 
+        # Save output audio
+        swrite(result_dir / f"{filename}.wav", hparams.audio.sampling_rate, wav_recon[0].cpu().numpy())
 
-            wav_recon, align, *_, timestep = model.inference(
-                text,
-                spk_id,
-                pace=args.pace,
-            )
+        # Prepare waveform for UT-MOS scoring
+        out_wavs = wav_recon.unsqueeze(0) if wav_recon.dim() < 3 else wav_recon
+        out_wavs = resampler(out_wavs)
 
-            swrite(
-                cwd / "mos_results" / f"{args.filename}_{file_name}" /
-                f"{data.loc[i]['filename']}.wav",
-                hparams.audio.sampling_rate,
-                wav_recon[0].detach().cpu().numpy(),
-                # wav_recon.detach().cpu().numpy(),
-            )
-
-            #utmos
-            if len(wav_recon.shape) == 1:
-                out_wavs = wav_recon.unsqueeze(0).unsqueeze(0)
-            elif len(wav_recon.shape) == 2:
-                out_wavs = wav_recon.unsqueeze(0)
-            elif len(wav_recon.shape) == 3:
-                out_wavs = wav_recon
-            else:
-                raise ValueError('Dimension of input tensor needs to be <= 3.')
-            out_wavs = resampler(out_wavs)
-            bs = out_wavs.shape[0]
-            batch = {
-                'wav': out_wavs,
-                'domains': torch.zeros(bs, dtype=torch.int).to(wav_recon.device),
-                'judge_id': torch.ones(bs, dtype=torch.int).to(wav_recon.device)*288
-            }
-            bs = out_wavs.shape[0]
-            batch = {
+        # Prepare batch for UT-MOS
+        batch = {
             'wav': out_wavs,
-            'domains': torch.zeros(bs, dtype=torch.int).to(wav_recon.device),
-            'judge_id': torch.ones(bs, dtype=torch.int).to(wav_recon.device)*288
-            }
+            'domains': torch.zeros(out_wavs.shape[0], dtype=torch.int, device=wav_recon.device),
+            'judge_id': torch.full((out_wavs.shape[0],), 288, dtype=torch.int, device=wav_recon.device)
+        }
 
-            utmosscore = utmos(batch)
-            utmosscore=utmosscore.mean(dim=1).squeeze(1).cpu().detach().numpy()*2 + 3
-            mos_score_average=[mos_score_average]
-            mos_score_average=torch.tensor(mos_score_average)
-            mos_dic[data.loc[i]['filename']] = mos_score_average.tolist()
-            mosscore += mos_dic[data.loc[i]['filename']][0]
-            average_mosscore =  mosscore/ (i + 1)
-            mos_dic['mean_mos'] = average_mosscore
-            with open(
-                    cwd / "mos_results" / f"{args.filename}_{file_name}.json",
-                    "w") as f:
+        # Compute UT-MOS score
+        utmosscore = utmos(batch).mean(dim=1).squeeze(1).cpu().numpy() * 2 + 3
+
+        # Store MOS score
+        mos_dic[filename] = utmosscore.tolist()
+        mos_score_total += utmosscore[0]
+        mos_count += 1
+
+        # Update average MOS score
+        mos_dic['mean_mos'] = mos_score_total / mos_count
+
+        # Save MOS scores periodically to reduce I/O operations
+        if i % 10 == 0 or i == len(data['text']) - 1:
+            with open(result_dir / f"{args.filename}_{file_name}.json", "w") as f:
                 json.dump(mos_dic, f)
-                f.write('\n')
