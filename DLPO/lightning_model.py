@@ -1021,147 +1021,99 @@ class Wavegrad2(pl.LightningModule):
         return wav_noisy_sliced, hidden_rep_sliced,eps,duration,mask
     
     def training_step(self, batch, batch_idx):
-            frame,logprob, t, hidrep, mos, texts,mosscore_update, duration_target, speakers, input_lengths, output_lengths, text_org, model_mean_t, model_std_t,goal_audio,step_list,logprob_inf,nisqascore_update,rawtext = batch
+        frame, logprob, t, hidrep, mos, texts, mosscore_update, duration_target, speakers, input_lengths, output_lengths, text_org, model_mean_t, model_std_t, goal_audio, step_list, logprob_inf, nisqascore_update, rawtext = batch
 
+        batch_size = goal_audio.shape[0]
+        device = self.device
+        max_step = 999
+        sample_steps = 10
+        step_decrement = max_step // sample_steps
+        num_steps = sample_steps + 1  # Including t=0
 
-            wind_index = torch.zeros(
-                (goal_audio.shape[0], ),
-                dtype=torch.int,
-                device=self.device,
+        # Preallocate tensors for losses and log probabilities
+        log_prob_list_allsteps = torch.empty((num_steps, batch_size), device=device)
+        plog_prob_list_allsteps = torch.empty((num_steps, batch_size), device=device)
+        l1_loss_list = torch.empty((num_steps, batch_size), device=device)
+        duration_loss_list = torch.empty((num_steps, batch_size), device=device)
+        kl_normalize_list = torch.empty((num_steps, batch_size), device=device)
+
+        # Initialize wind_index tensor
+        wind_index = torch.randint(0, max(output_lengths.max() - self.window.length, 1), (batch_size,), device=device)
+
+        t1 = max_step
+        step_idx = 0  # Keep track of steps
+
+        while t1 >= 0:
+            noise_level = self.sqrt_alphas_cumprod_prev[t1].unsqueeze(-1)
+            wav_noisy_sliced, hidden_rep_sliced, eps, duration, mask = self.calculate_noisy_audio(
+                text_org, input_lengths, speakers, duration_target, output_lengths, goal_audio, noise_level
             )
 
-            rep_wlan, wav_wlan, wscale = self.window.length, int(
-                self.window.length * self.window.scale), self.window.scale
-            
+            eps_recon, log_prob_google, _ = self.forward(wav_noisy_sliced, hidden_rep_sliced, noise_level, t1, wind_index=wind_index)
+            peps_recon, plog_prob_google, _ = self.ref_model.forward(wav_noisy_sliced, hidden_rep_sliced, noise_level, t1, wind_index=wind_index)
 
-            for i in range(goal_audio.shape[0]):
-                wind_index[i] = torch.randint(
-                    0,
-                    max(output_lengths[i] - rep_wlan, 1),
-                    size=(1, ),
-                )
+            # Compute losses
+            l1_loss = self.norm(eps_recon, eps)
+            l1_loss_list[step_idx] = l1_loss
+
+            mask = ~mask
+            duration_ = duration.masked_select(mask)
+            duration_target_ = duration_target.masked_select(mask)
+            duration_loss = self.mse_loss(duration_, duration_target_ / (self.hparams.audio.sampling_rate / self.hparams.window.scale))
+            duration_loss_list[step_idx] = duration_loss
+
+            kl_normalize_list[step_idx] = self.norm(eps_recon, peps_recon)
+
+            # Store log probabilities
+            log_prob_list_allsteps[step_idx] = log_prob_google
+            plog_prob_list_allsteps[step_idx] = plog_prob_google
+
+            t1 -= step_decrement
+            step_idx += 1
+
+        # Compute KL divergence and ratio
+        kl1_google = log_prob_list_allsteps - plog_prob_list_allsteps
+        kl1_google_all = logprob - logprob_inf
+        ratio = torch.clamp(kl1_google, 1.0 - 1e-4, 1.0 + 1e-4).squeeze()
+        diffusion_loss = l1_loss_list + duration_loss_list
+
+        mosscore_update = mosscore_update.unsqueeze(0).unsqueeze(2).expand(num_steps, 2, 2)
+        kl_normalize_list = kl_normalize_list.unsqueeze(1).unsqueeze(2).expand(num_steps, 2, 2)
+        diffusion_loss = diffusion_loss.unsqueeze(1).unsqueeze(2).expand(num_steps, 2, 2)
+
+        # ====== Loss functions (Uncomment the one you want to use) ======
+
+        ## DPOK (Direct Preference Optimization with KL penalty)
+        # loss = torch.mean(-ratio * mosscore_update + kl_normalize_list)
+
+        ## DDPO (Diffusion-based Direct Preference Optimization)
+        # loss = torch.mean(-ratio * mosscore_update)
+
+        ## RWR (Reward-weighted regression)
+        # loss = torch.mean(-log_prob_list_allsteps * mosscore_update)
+
+        ## KLinR (KL-regularized reward optimization)
+        # loss = torch.mean(-ratio * (mosscore_update - kl_normalize_list))
+
+        ## Default: DLPO (Diffusion Loss Preference Optimization)
+        loss = torch.mean(-ratio * (5 * mosscore_update - diffusion_loss))
+
+        KL_diff_entire = torch.mean(logprob - logprob_inf)
+
+        # Log losses
+        loss_info = {
+            "l1loss": torch.mean(l1_loss_list).cpu().detach().item(),
+            "loss": loss.cpu().detach().item(),
+            "mosscore": torch.mean(mosscore_update).cpu().detach().item(),
+            "KL": torch.mean(kl_normalize_list).cpu().detach().item(),
+            "KL_entire": KL_diff_entire.cpu().detach().item(),
+            'nisqascore': torch.mean(nisqascore_update).cpu().detach().item(),
+        }
+        self.log_dict(loss_info)
+        
+        return loss
 
 
-            
-            
-            max_step=999
-            sample_steps = 10
-            step_decrement = 999 // sample_steps
-            t1=max_step
-            log_prob_list_allsteps = []
-            log_prob_list_allsteps_cur = []
-            
-            plog_prob_list_allsteps=[]
-            l1_loss_list=[]
-            duration_loss_list=[]
-            kl_normalize=[]
-
-            while t1 >= 0:
-                noise_level = self.sample_continuous_noise_level(t1, )
-                noise_level = self.sqrt_alphas_cumprod_prev[t1].unsqueeze(-1)
-                wav_noisy_sliced, hidden_rep_sliced,eps,duration,mask=self.calculate_noisy_audio(text_org,input_lengths,speakers,duration_target,output_lengths,goal_audio,noise_level)
-                eps_recon, log_prob_google,log_prob_list_cur = self.forward(
-                    wav_noisy_sliced,
-                    hidden_rep_sliced,
-                    noise_level,
-                    t1,
-                    wind_index=wind_index,
-                )
-                
-                
-                with torch.no_grad():
-                    peps_recon,plog_prob_google,plog_prob_list_cur = self.ref_model.forward(
-                        wav_noisy_sliced,
-                    hidden_rep_sliced,
-                    noise_level,
-                    t1,
-                    wind_index=wind_index,
-                    )
-                    ##original loss
-                l1_loss = self.norm(eps_recon, eps)
-                l1_loss_list.append(l1_loss)
-                mask = ~mask
-                duration_ = duration.masked_select(mask)
-                duration_target_ = duration_target.masked_select(mask)
-                duration_loss = self.mse_loss(
-                    duration_,
-                    duration_target_ /
-                    (self.hparams.audio.sampling_rate / self.hparams.window.scale),
-                )
-                duration_loss_list.append(duration_loss)
-                eps_recon=eps_recon.to(self.device)
-                peps_recon=peps_recon.to(self.device)
-
-                
-                kl_normalize_l1loss=self.norm(eps_recon, peps_recon)
-                print('kl_normalize_l1loss',kl_normalize_l1loss)
-                kl_normalize.append(kl_normalize_l1loss)
-
-                
-                log_prob_google=log_prob_google.to(self.device)
-                plog_prob_google=plog_prob_google.to(self.device)
-                log_prob_list_allsteps.append(log_prob_google)
-                plog_prob_list_allsteps.append(plog_prob_google)
-                log_prob_list_allsteps_cur.append(log_prob_list_cur)
-                t1 -= step_decrement
-            
-            ####while end
-                
-            log_prob_google_allsteps = torch.stack(log_prob_list_allsteps)
-            log_prob_list_allsteps_cur = torch.stack(log_prob_list_allsteps_cur)
-            plog_prob_google_allsteps = torch.stack(plog_prob_list_allsteps)
-            duration_loss_allstep=torch.stack(duration_loss_list)
-            l1_loss_allstep=torch.stack(l1_loss_list)
-            kl_normalize=torch.stack(kl_normalize)
-
-            
-
-            kl1_google=log_prob_google_allsteps-log_prob_list_allsteps_cur
-            kl1_google_all=logprob-logprob_inf
-            
-            ratio = torch.clamp(kl1_google, 1.0 - 1e-4, 1.0 + 1e-4).squeeze()
-            diffusion_loss = (l1_loss_allstep + duration_loss_allstep)
-            
-            mosscore_update = mosscore_update.unsqueeze(0).unsqueeze(2).expand(11, 2, 2)
-            kl_normalize = kl_normalize.unsqueeze(1).unsqueeze(2).expand(11, 2, 2)
-            diffusion_loss = diffusion_loss.unsqueeze(1).unsqueeze(2).expand(11, 2, 2)
-            ##dpoKL
-            # loss = torch.mean(-log_prob_t *(0.0002*(mosscore_update - kl1)-1))
-             
-            ###DPOK
-            # loss = torch.mean(-ratio*(mosscore_update) + kl_normalize_reduced)
-            # loss = torch.mean(-log_prob_t*mosscore_update )
-            
-            ##dpok
-            # loss = torch.mean(0.0002*(-log_prob_t*mosscore_update + (log_prob_t - plog_prob_t))-1)
-            # loss = torch.mean(-log_prob_t*(1*mosscore_update -1*(logprob - logprob_inf)))
-          
-            ##DDPO
-            # loss = torch.mean(-ratio * mosscore_update)
-            
-                 
-            ##DLPO
-            # diffusion_loss = (l1_loss_allstep + duration_loss_allstep).unsqueeze(1).unsqueeze(1).unsqueeze(1)
-            loss = torch.mean(-ratio * (5*mosscore_update - diffusion_loss))
-            
-            ##KlinR
-            # loss = torch.mean(-ratio*(mosscore_update- kl_normalize))
-            print('loss',loss)
-            
-
-            KL_diff_entire=torch.mean(logprob - logprob_inf)
- 
-            
-            loss_info = {
-                "l1loss": torch.mean(l1_loss_allstep).cpu().detach().item(),
-                "loss": loss.cpu().detach().item(),
-                "mosscore": torch.mean(mosscore_update).cpu().detach().item(),
-                "KL":torch.mean(kl_normalize).cpu().detach().item(),
-                "KL_entire":KL_diff_entire.cpu().detach().item(),
-                'nisqascore':torch.mean(nisqascore_update).cpu().detach().item(),
-            }
-            self.log_dict(loss_info)
-            return loss
 
 
 
