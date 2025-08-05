@@ -7,17 +7,7 @@ import dataloader
 class DataModule(LightningDataModule):
 
     def __init__(self, buffer_path: Path, hparams_rl):
-        super().__init__()
-        save_dir = Path(
-            "/users/PAS2062/delijingyic/project/MOSNet/output/CNN-BLSTM_mse_16/modelPara"
-        )
-        if (save_dir.exists()):
-            model_list = list(save_dir.iterdir())
-        else:
-            model_list = []
-
-        if len(model_list) > 0:
-            last_model = model_list[-1]
+        super().__init__()     
         self.buffer = RolloutBuffer(buffer_path, )
         self.hparams_rl = hparams_rl
 

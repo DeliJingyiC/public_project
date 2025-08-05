@@ -25,12 +25,12 @@ data:
   lang: 'eng'
   text_cleaners: ['english_cleaners'] # korean_cleaners, english_cleaners, chinese_cleaners
   speakers: ['LJSpeech']
-  train_dir: '/users/PAS2062/delijingyic/project/wavegrad2/dataset/LJSpeech/preprocessed'
+  train_dir: 'data/LJSpeech/preprocessed'  # Update this path to your dataset location
   train_meta: 'train_all.txt'  # relative path of metadata file from train_dir
-  val_dir: '/users/PAS2062/delijingyic/project/wavegrad2/dataset/LJSpeech/preprocessed'
+  val_dir: 'data/LJSpeech/preprocessed'  # Update this path to your dataset location
   val_meta: 'val.txt'  # relative path of metadata file from val_dir'
   lexicon_path: 'lexicon/librispeech-lexicon.txt'
-  mosscore_dir: '/users/PAS2062/delijingyic/project/wavegrad2/mos_results/10_07_12_epoch=27MOS120_WG21059_base.json'
+  mosscore_dir: 'mos_results/mos_scores.json'  # Update this path to your MOS results
   
 audio:
   n_mel_channels: 80
@@ -88,7 +88,7 @@ ddpm:
   clip_sample_range: 1.0
 
 log:
-  name: 'wavegrad2'
+  name: 'dlpo'
   checkpoint_dir: 'checkpoint'
   tensorboard_dir: 'tensorboard'
   test_result_dir: 'test_sample/result'

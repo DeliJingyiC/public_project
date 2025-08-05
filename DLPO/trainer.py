@@ -147,8 +147,10 @@ def train(args):
     
     nisqa=nisqaModel(args)
     
+    # Load UTMOS model - update path as needed
+    utmos_checkpoint_path = "UTMOS/epoch=3-step=7459.ckpt"  # Update this path
     utmos=BaselineLightningModule.load_from_checkpoint(
-            "/users/PAS2062/delijingyic/project/wavegrad2/UTMOS/epoch=3-step=7459.ckpt",map_location='cpu').eval()
+            utmos_checkpoint_path, map_location='cpu').eval()
     
     resampler = torchaudio.transforms.Resample(
             orig_freq=22050,

@@ -102,13 +102,15 @@ if __name__ == '__main__':
         'EMA' in args.checkpoint) else ckpt)
     model = model.cuda()
 
-    sample_dir = Path(
-        "/users/PAS2062/delijingyic/project/wavegrad2/dataset/LJSpeech")
+    # Update these paths to your dataset location
+    sample_dir = Path("data/LJSpeech")  # Update this path
     duration_dir = sample_dir / "preprocessed" / "duration"
     textgrid_dir = sample_dir / "preprocessed" / "TextGrid"
 
+    # Load UTMOS model - update path as needed
+    utmos_checkpoint_path = "UTMOS/epoch=3-step=7459.ckpt"  # Update this path
     utmos=lightning_module.BaselineLightningModule.load_from_checkpoint(
-            "/users/PAS2062/delijingyic/project/wavegrad2/UTMOS/epoch=3-step=7459.ckpt",map_location='cpu').eval()
+            utmos_checkpoint_path, map_location='cpu').eval()
     
     resampler = torchaudio.transforms.Resample(
             orig_freq=22050,
@@ -119,9 +121,9 @@ if __name__ == '__main__':
         )
     utmos=utmos.cuda()
     resampler=resampler.cuda()
-    textfile_path = Path(
-        "/users/PAS2062/delijingyic/project/wavegrad2/dataset/LJSpeech/LJSpeech-1.1/inference_text2.csv"
-    )
+    
+    # Update this path to your inference text file
+    textfile_path = Path("data/LJSpeech/LJSpeech-1.1/inference_text2.csv")  # Update this path
     data = pd.read_csv(textfile_path,
                        dtype=str,
                        sep='\t',
@@ -177,7 +179,7 @@ if __name__ == '__main__':
             'judge_id': torch.full((out_wavs.shape[0],), 288, dtype=torch.int, device=wav_recon.device)
         }
 
-        # Compute UT-MOS score
+        # Compute UTMOS score
         utmosscore = utmos(batch).mean(dim=1).squeeze(1).cpu().numpy() * 2 + 3
 
         # Store MOS score

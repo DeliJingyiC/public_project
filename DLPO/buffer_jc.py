@@ -4,7 +4,6 @@ import torch
 from typing import Any, Dict, Tuple, Generator, List, Optional, Union
 from pathlib import Path
 from torch.utils.data import Dataset
-from MOSNet.model import CNN_BLSTM
 from torch.utils.data import DataLoader
 import scipy
 import random
